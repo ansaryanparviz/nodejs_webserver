@@ -4,6 +4,7 @@ exports.configs = {
     controllerDirectory: 'controllers',
     publicDir: './public',
     viewsDir: './views',
+    uploadDir: __dirname + '/public/uploads',
     templates: {
         notFound: 'errors/404.html'
     }

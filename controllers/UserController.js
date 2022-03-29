@@ -11,6 +11,6 @@ class UserController {
     store(data) {
         return data;
     }
-};
+}
 
 module.exports = UserController;

@@ -1,14 +1,14 @@
+require('./globals');
 const http = require('http');
 const path = require('path');
 const queryString = require('qs');
-const configs = require('./configs.js').configs;
 const controllers = require('./controllers/ControllerLoader.js').controllers;
 const formidable = require('formidable');
 const staticServer = require('node-static');
 const port = 8080;
 
 const staticFileServer = new staticServer.Server(
-    configs.publicDir,
+    configs().publicDir,
     {
         cache: 3600,
         gzip: true
@@ -16,12 +16,13 @@ const staticFileServer = new staticServer.Server(
 );
 
 const viewServer = new staticServer.Server(
-    configs.viewFile,
+    configs().viewFile,
 );
 
 const server = http.createServer((request, serverResponse) => {
-    request.parsedURL = new URL(path.join(configs.hostname, request.url));
+    request.parsedURL = new URL(path.join(configs().hostname, request.url));
     const route = getControllerMethodName(request);
+    requests(request);
 
     getRequestData(request).then((data) => {
         if (request.parsedURL.pathname.search('/api') !== -1) {
@@ -39,12 +40,12 @@ const server = http.createServer((request, serverResponse) => {
         } else {
             if (controllers[route.controller] !== undefined) {
                 let viewFile = controllers[route.controller][route.method](data);
-                viewServer.serveFile(path.join(configs.viewsDir, viewFile), 200, {}, request, serverResponse);
+                viewServer.serveFile(path.join(configs().viewsDir, viewFile), 200, {}, request, serverResponse);
             } else {
                 staticFileServer.serve(request, serverResponse, function (e, response) {
                     if (e && (e.status === 404)) {
                         viewServer.serveFile(
-                            path.join(configs.viewsDir, configs.templates.notFound),
+                            path.join(configs().viewsDir, configs.templates.notFound),
                             404,
                             {},
                             request,
