@@ -1,75 +1,105 @@
 const http = require('http');
-const fileSystem = require('fs');
-const queryString = require('qs');
 const path = require('path');
-const mimeTypes = require('mime-types');
+const queryString = require('qs');
 const configs = require('./configs.js').configs;
 const controllers = require('./controllers/ControllerLoader.js').controllers;
+const formidable = require('formidable');
+const staticServer = require('node-static');
 const port = 8080;
+
+const staticFileServer = new staticServer.Server(
+    configs.publicDir,
+    {
+        cache: 3600,
+        gzip: true
+    }
+);
+
+const viewServer = new staticServer.Server(
+    configs.viewFile,
+);
 
 const server = http.createServer((request, serverResponse) => {
     request.parsedURL = new URL(path.join(configs.hostname, request.url));
-    let data = getRequestData(request);
+    const route = getControllerMethodName(request);
 
-    if (request.parsedURL.pathname.search('/api') !== -1) {
-        const route = getControllerMethodName(request);
-        if (controllers[route.controller] !== undefined) {
-            let response = controllers[route.controller][route.method](data);
+    getRequestData(request).then((data) => {
+        if (request.parsedURL.pathname.search('/api') !== -1) {
 
-            serverResponse.writeHead(200, {"Content-Type" : "application/json"});
-            serverResponse.write(JSON.stringify(response), 'binary');
-            serverResponse.end();
-        } else {
-            serverResponse.writeHead(404);
-            serverResponse.end(route.controller + "Controller NOT FOUND!")
-        }
-    } else {
-        let filePath = path.join(__dirname, request.parsedURL.pathname);
-        fileSystem.readFile(filePath, (err, data) => {
-            if (err) {
-                serverResponse.writeHead(404);
-                serverResponse.end(JSON.stringify(err));
+            if (controllers[route.controller] !== undefined) {
+                let response = controllers[route.controller][route.method](data);
+
+                serverResponse.writeHead(200, {"Content-Type" : "application/json"});
+                serverResponse.write(JSON.stringify(response), 'binary');
+                serverResponse.end();
             } else {
-                let fileMimeType = mimeTypes.lookup(filePath);
-                if (fileMimeType === false) {
-                    serverResponse.writeHead(400);
-                    serverResponse.end('BAD REQUEST!');
-                } else {
-                    serverResponse.writeHead(200, {"Content-Type" : fileMimeType});
-                    serverResponse.write(data, 'binary');
-                    serverResponse.end();
-                }
+                serverResponse.writeHead(404);
+                serverResponse.end(route.controller + "Controller NOT FOUND!")
             }
-        })
-    }
+        } else {
+            if (controllers[route.controller] !== undefined) {
+                let viewFile = controllers[route.controller][route.method](data);
+                viewServer.serveFile(path.join(configs.viewsDir, viewFile), 200, {}, request, serverResponse);
+            } else {
+                staticFileServer.serve(request, serverResponse, function (e, response) {
+                    if (e && (e.status === 404)) {
+                        viewServer.serveFile(
+                            path.join(configs.viewsDir, configs.templates.notFound),
+                            404,
+                            {},
+                            request,
+                            serverResponse
+                        );
+                    }
+                })
+            }
+        }
+    });
 });
 
 server.listen(port, () => {
     console.log("listening on port: " + port);
 });
 
-function getRequestData(request) {
-    let data;
-    if (request.method === 'GET') {
-        data = queryString.parse(request.parsedURL.search.replace(/\?/g,''));
-    } else {
-        let postData = '';
-        request.on('data', dataPart => {
-            postData += dataPart;
-        });
-        request.on('end', () => {
-            data = Object.assign(data, JSON.parse(postData));
-        });
-    }
+async function getRequestData(request) {
+    let promise = new Promise((resolve, reject) => {
+        let data = queryString.parse(request.parsedURL.search.replace(/\?/g,''));
 
-    return data;
+        if (request.method === 'GET') {
+            resolve(data);
+        } else {
+            let postData = {
+                fields: {},
+                files: {}
+            };
+
+            let incomingForm = new formidable.IncomingForm();
+            incomingForm.parse(request, (err, fields, files) => {
+                postData.fields = Object.assign(postData.fields, fields);
+                postData.files = Object.assign(postData.files, files);
+            });
+            incomingForm.on('end', (fields, files) => {
+                data = Object.assign(data, postData);
+                resolve(data);
+            });
+        }
+    })
+
+    return await promise;
 }
 
 function getControllerMethodName(request) {
     let requestParts = request.parsedURL.pathname.split('/');
 
+    let controllerIndex = 1;
+    let methodIndex = 2;
+    if (request.parsedURL.pathname.search('/api') !== -1) {
+        controllerIndex++;
+        methodIndex++;
+    }
+
     return {
-        controller: requestParts[2] !== undefined ? requestParts[2] : 'Home',
-        method: requestParts[3] !== undefined ? requestParts[3] : 'index',
+        controller: requestParts[controllerIndex] !== undefined ? requestParts[controllerIndex] : 'Home',
+        method: requestParts[methodIndex] !== undefined ? requestParts[methodIndex] : 'index',
     };
 }

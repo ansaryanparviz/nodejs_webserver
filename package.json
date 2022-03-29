@@ -10,7 +10,9 @@
   "license": "ISC",
   "dependencies": {
     "esm": "^3.2.25",
+    "formidable": "^2.0.1",
     "mime-types": "^2.1.35",
+    "node-static": "^0.7.11",
     "pm2": "^5.2.0",
     "qs": "^6.10.3"
   },

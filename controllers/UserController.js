@@ -5,10 +5,11 @@ class UserController {
             "data": data
         }
     }
+    register() {
+        return 'user/register.html';
+    }
     store(data) {
-        return {
-            "data": data
-        }
+        return data;
     }
 };
 
